@@ -91,7 +91,7 @@ void CholeskyTrans(vector<vector<double> > &cho_matrix, vector<vector<double> > 
 
 long _stdcall isKnockOut(long type, long no_observation, long double y, double r, double ParticipationRate,
 	double put_k, double H, double bonuscouponRate,
-	double* spot, double* spot2, double* vol, double* stk, double t)
+	double* spot, double* spot2, double* vol, double* stk, double t, double FX0)
 {
 	long no_asset = 1;
 	int no_period = no_observation + 1;  //總期數=觀察期總數+1
@@ -201,7 +201,7 @@ long _stdcall isKnockOut(long type, long no_observation, long double y, double r
 
 double _stdcall myTurboNote_Price(long type, long no_observation, long double y, double r, double ParticipationRate,
 	double put_k, double H, double bonuscouponRate,
-	double* spot, double* spot2, double* vol, double* stk, double t)
+	double* spot, double* spot2, double* vol, double* stk, double t, double FX0)
 {
 	long seed = -1;  //亂數種子
 	std::mt19937 generator(seed);
@@ -232,7 +232,7 @@ double _stdcall myTurboNote_Price(long type, long no_observation, long double y,
 	double	payoff_average = 0.0;
 	int required_dimension = 0;
 
-	vector<int> count(no_observation);  //count[0]=提前出場次數;count[1]=到期<K次數;count[2]=到期>=K次數
+	vector<int> count(3);  //count[0]=提前出場次數;count[1]=到期<K次數;count[2]=到期>=K次數
 	//int count[no_observation] = {0};
 
 							   //Aarray Parameter
@@ -313,22 +313,12 @@ double _stdcall myTurboNote_Price(long type, long no_observation, long double y,
 		}
 	}
 
-	//判斷目前是第幾期
-	for (int i = 0; i < no_asset; i++) {
-		for (int j = 0; j < no_period; j++) {
-			if (StockTable[i][j + 1] == 0)
-				period_now = j;
-		}
-	}
-
 	//-2.the following period
 	for (int j = 1; j <= no_observation; j++) {
 		if (StockTable[0][j] > 0.0) {
 			R_final[j] = StockTable[0][j] / StockTable[0][0];
 			for (int m1 = 0; m1 < no_asset; m1++) {
-				if (StockTable[m1][j] / StockTable[m1][0] < R_final[j]) {
-					R_final[j] = StockTable[m1][j] / spot[m1];
-				}
+				R_final[j] = StockTable[m1][j] / spot[0] < R_final[j] ? StockTable[m1][j] / spot[m1] : R_final[j];
 			}
 			if (R_final[j] >= H) {  //R_final[j] - H <= err  => R_final[j] >= H
 				double value1 = 0;
@@ -357,39 +347,30 @@ double _stdcall myTurboNote_Price(long type, long no_observation, long double y,
 
 				return value1;
 			}
-			/* 因為最後一期不配息, 所以此區塊不判斷
-			else if (j == no_observation && R_final[j] < put_k) {  //R_final[j] - put_k > err => R_final[j] < put_k
-			double value1 = 0;
-			//value1 = R_final[j] - put_k;  //value1<0
 
-			switch (type)
-			{
-			case 0:  //Normal
-			value1 = -1 * max(put_k - R_final[j], 0.0);  //final_payoff幣別=HKD
-			break;
-
-			case 1:  //Floating
-			value1 = -1 * max(put_k - R_final[j], 0.0)*FXt;  //final_payoff幣別=USD
-			break;
-
-			case 2:  //Compo
-			value1 = -1 * max(FX0*put_k - FXt*R_final[j], 0.0);  //final_payoff幣別=USD
-			break;
-
-			case 3:  //Quanto
-			value1 = -1 * max(put_k - R_final[j], 0.0)*FXT;  //final_payoff幣別=USD
-			break;
-			}
-
-			return value1;
-			}
-			*/
 			n_past++;
 		}
 		else break;
+
 		//for (i = 0; i < no_asset; i++) { st_m[j][i] = StockTable[j][i]; }
 	}
 
+	//將最近一日的股價當作最近一期的價格=>以便後續進行模擬試算
+	for (int i = 0; i < no_asset; i++) {
+		StockTable[i][n_past] = spot2[i];
+	}
+
+	/*
+	//判斷目前是第幾期
+	for (int i = 0; i < no_asset; i++) {
+		for (int j = 0; j < no_period; j++) {
+			if (StockTable[i][j + 1] == 0) {
+				period_now = j+1;  //period_now=n_past+1
+				break;
+			}
+		}
+	}
+	*/
 	double min_dt1 = 1.0 / 250.0;
 	n_left = no_period - n_past;
 	dt1 = max(t - dt*(n_left - 1), dt);
@@ -428,10 +409,7 @@ double _stdcall myTurboNote_Price(long type, long no_observation, long double y,
 					{
 						StockTable[m1][m111] = StockTable[m1][m111 - 1] * exp((DriftRate[m1] - vol[m1] * vol[m1] / 2.0)*(dt)+vol[m1] * sqrt(dt)*corrv[m1][m111 - (n_past + 1)]);
 						//判斷最小報酬標的及最小報酬
-						if (StockTable[m1][m111] / spot[m1] < R_final[m111])
-						{
-							R_final[m111] = StockTable[m1][m111] / spot[m1];
-						}
+						R_final[m111] = StockTable[m1][m111] / spot[m1] < R_final[m111] ? StockTable[m1][m111] / spot[m1] : R_final[m111];
 					}  //end of m1 loop
 					   //KO判斷
 					if (ko_flag == 0 && m111 <= no_observation) {  //尚未KO且期數<=觀察期總數,才進來判斷
@@ -543,7 +521,7 @@ double _stdcall myTurboNote_Price(long type, long no_observation, long double y,
 
 double _stdcall myTurboNote_Delta(long type, long no_observation, long double y, double r, double ParticipationRate,
 	double put_k, double H, double bonuscouponRate,
-	double* spot, double* spot2, double* vol, double* stk, double t)
+	double* spot, double* spot2, double* vol, double* stk, double t, double FX0)
 {
 	long no_asset = 1;
 	long ko_flag_greeks = 0;
@@ -569,11 +547,11 @@ double _stdcall myTurboNote_Delta(long type, long no_observation, long double y,
 	spot_u[no] = spot_u[no] + ds;
 	spot_d[no] = spot_d[no] - ds;
 
-	ko_flag_greeks = isKnockOut(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol, stk, t);
+	ko_flag_greeks = isKnockOut(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol, stk, t, FX0);
 
 	if (ko_flag_greeks == 0) {
-		p1 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_u, vol, stk, t);
-		p2 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_d, vol, stk, t);
+		p1 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_u, vol, stk, t, FX0);
+		p2 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_d, vol, stk, t, FX0);
 
 		delta = (p1 - p2) / (2 * ds);
 	}
@@ -582,3 +560,46 @@ double _stdcall myTurboNote_Delta(long type, long no_observation, long double y,
 	}
 	return delta;
 }
+/*
+double _stdcall myTurboNote_Gamma(long type, long no_observation, long double y, double r, double ParticipationRate,
+	double put_k, double H, double bonuscouponRate,
+	double* spot, double* spot2, double* vol, double* stk, double t, double FX0)
+{
+	long no_asset = 1;
+	long ko_flag_greeks = 0;
+	long no_period = no_observation + 1;
+	long no = 0;
+
+	int i = 0;
+	double p1 = 0.0;
+	double p2 = 0.0;
+	double delta;
+	//double ds = 0.0001*spot[no];
+	double ds = 0.0001;
+
+	double* spot_u;
+	double* spot_d;
+	spot_u = new double[no_asset];
+	spot_d = new double[no_asset];
+	for (i = 0; i < no_asset; i++) {
+		spot_u[i] = spot2[i];
+		spot_d[i] = spot2[i];
+	}
+
+	spot_u[no] = spot_u[no] + ds;
+	spot_d[no] = spot_d[no] - ds;
+
+	ko_flag_greeks = isKnockOut(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol, stk, t, FX0);
+
+	if (ko_flag_greeks == 0) {
+		p1 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_u, vol, stk, t, FX0);
+		p2 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_d, vol, stk, t, FX0);
+
+		delta = (p1 - p2) / (2 * ds);
+	}
+	else {
+		delta = 0.0;
+	}
+	return delta;
+}
+*/
