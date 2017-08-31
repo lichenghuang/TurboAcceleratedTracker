@@ -1,0 +1,1 @@
+https://social.msdn.microsoft.com/Forums/vstudio/en-US/bc7d6672-95e0-408b-9808-c07e7a1a81a9/how-to-convert-datetime-to-double?forum=csharpgeneral

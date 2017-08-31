@@ -1,5 +1,6 @@
 ﻿  Turbo.cpp
-c:\users\richard\documents\visual studio 2015\projects\c++dll\turboaccleratedtracker_dll\turboaccleratedtracker\turboaccleratedtracker\turbo.cpp(200): warning C4715: 'isKnockOut': 不是所有控制路徑都傳回值
+c:\users\richard\documents\visual studio 2015\projects\c++dll\turboaccleratedtracker_dll\turboaccleratedtracker\turboaccleratedtracker\turbo.cpp(207): warning C4715: 'isKnockOut': 不是所有控制路徑都傳回值
+  .NETFramework,Version=v4.0.AssemblyAttributes.cpp
      正在建立程式庫 C:\Users\Richard\Documents\Visual Studio 2015\Projects\C++DLL\TurboAccleratedTracker_DLL\TurboAccleratedTracker\Debug\TurboAccleratedTracker.lib 和物件 C:\Users\Richard\Documents\Visual Studio 2015\Projects\C++DLL\TurboAccleratedTracker_DLL\TurboAccleratedTracker\Debug\TurboAccleratedTracker.exp
 TurboAccleratedTracker.exp : warning LNK4070: /OUT: .EXP 檔的 Turbo.dll 指示詞與輸出檔名 'C:\Users\Richard\Documents\Visual Studio 2015\Projects\C++DLL\TurboAccleratedTracker_DLL\TurboAccleratedTracker\Debug\TurboAccleratedTracker.dll' 不同，因此已忽略指示詞
   TurboAccleratedTracker.vcxproj -> C:\Users\Richard\Documents\Visual Studio 2015\Projects\C++DLL\TurboAccleratedTracker_DLL\TurboAccleratedTracker\Debug\TurboAccleratedTracker.dll
