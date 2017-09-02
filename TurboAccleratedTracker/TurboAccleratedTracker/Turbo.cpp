@@ -98,7 +98,8 @@ double timeDifference(double former, double later)
 
 long isKnockOut(long type, long no_observation, double y, double r, double ParticipationRate,
 	double put_k, double H, double bonuscouponRate,
-	double* spot, double* spot2, double* vol, double* stk, double t, double FX0, double valueDate, double* observeDate)
+	double* spot, double* spot2, double* vol, double* stk, double t, double FX0, double valueDate, double* observeDate,
+	double rf, double corrFX, double volFX)
 {
 	long no_asset = 1;
 	int no_period = no_observation + 1;  //總期數=觀察期總數+1
@@ -151,6 +152,12 @@ long isKnockOut(long type, long no_observation, double y, double r, double Parti
 						 //value1 = put_k * re_coupon[j];  //提前出場配息
 					ko_flag = 1;
 					break;
+
+				case 3:  //Quanto
+					//value1 = (put_k*(re_coupon[j]) + put_k*(1 - exp(-y*(no_period - j)*dt)))*FXT;  //final_payoff幣別=USD
+					ko_flag = 1;
+					break;
+
 					/*
 					case 1:  //Floating
 					value1 = (put_k*(re_coupon[j]) + put_k*(1 - exp(-y*(no_period - j)*dt)))*FXt;  //final_payoff幣別=USD
@@ -160,9 +167,6 @@ long isKnockOut(long type, long no_observation, double y, double r, double Parti
 					value1 = (put_k*(re_coupon[j]) + put_k*(1 - exp(-y*(no_period - j)*dt)))*FX0;  //final_payoff幣別=USD
 					break;
 
-					case 3:  //Quanto
-					value1 = (put_k*(re_coupon[j]) + put_k*(1 - exp(-y*(no_period - j)*dt)))*FXT;  //final_payoff幣別=USD
-					break;
 					*/
 				}
 
@@ -208,7 +212,8 @@ long isKnockOut(long type, long no_observation, double y, double r, double Parti
 
 double _stdcall myTurboNote_Price(long type, long no_observation, double y, double r, double ParticipationRate,
 	double put_k, double H, double bonuscouponRate,
-	double* spot, double* spot2, double* vol, double* stk, double t, double FX0, double valueDate, double* observeDate)
+	double* spot, double* spot2, double* vol, double* stk, double t, double FX0, double valueDate, double* observeDate,
+	double rf, double corrFX, double volFX)
 {
 	long seed = -1;  //亂數種子
 	std::mt19937 generator(seed);
@@ -255,7 +260,7 @@ double _stdcall myTurboNote_Price(long type, long no_observation, double y, doub
 	for (int i = 0; i < no_period; i++) { re_coupon[i] = bonuscouponRate * i; }  //第i期KO, coupon = couponRate * i * Notional
 	re_coupon[no_period] = 0.0;    //最後一期KO, coupon=0
 
-										//Double Aarray Parameter
+								   //Double Aarray Parameter
 	vector<vector<double> > DailyArray(no_asset, vector<double>(no_period));  //FixingDate Price(no_observation*no_asset)
 	vector<vector<double> > StockTable(no_asset, vector<double>(no_period + 1));  //for simulation use
 	vector<vector<double> > ReturnTable(no_asset, vector<double>(no_period));     //for simulation use
@@ -274,19 +279,19 @@ double _stdcall myTurboNote_Price(long type, long no_observation, double y, doub
 		case 0:  //Normal
 			DriftRate[i] = r - div[i];   //r_HKD-q
 			break;
+		case 1:  //Quanto
+			DriftRate[i] = r - div[i] - corrFX * vol[i] * volFX;   //r_TWD-q-corr_FX*vol*volFX
+			break;
 			/*
-			case 1:  //Floating
+			case 2:  //Floating
 			DriftRate[i] = r - div[i];   //r_HKD-q
 			break;
 
-			case 2:  //Compo
+			case 3:  //Compo
 			DriftRate[i] = rf - div[i];   //r_USD-q
 			vol[i] = sqrt(vol[i] * vol[i] + volFX * volFX + 2 * corrFX * vol[i] * volFX);
 			break;
 
-			case 3:  //Quanto
-			DriftRate[i] = r - div[i] - corrFX * vol[i] * volFX;   //r_TWD-q-corr_FX*vol*volFX
-			break;
 			*/
 		}
 	}
@@ -338,18 +343,19 @@ double _stdcall myTurboNote_Price(long type, long no_observation, double y, doub
 						 //value1 = put_k*(re_coupon[j]) + put_k*(1 - exp(-y*(no_period - j)*dt));
 					value1 = put_k * re_coupon[j];  //提前出場配息
 					break;
+
+				case 1:  //Quanto
+					value1 = (put_k*(re_coupon[j]) + put_k*(1 - exp(-y*(no_period - j)*dt)))*FXT;  //final_payoff幣別=USD
+					break;
 					/*
-					case 1:  //Floating
+					case 2:  //Floating
 					value1 = (put_k*(re_coupon[j]) + put_k*(1 - exp(-y*(no_period - j)*dt)))*FXt;  //final_payoff幣別=USD
 					break;
 
-					case 2:  //Compo
+					case 3:  //Compo
 					value1 = (put_k*(re_coupon[j]) + put_k*(1 - exp(-y*(no_period - j)*dt)))*FX0;  //final_payoff幣別=USD
 					break;
 
-					case 3:  //Quanto
-					value1 = (put_k*(re_coupon[j]) + put_k*(1 - exp(-y*(no_period - j)*dt)))*FXT;  //final_payoff幣別=USD
-					break;
 					*/
 				}
 
@@ -363,21 +369,23 @@ double _stdcall myTurboNote_Price(long type, long no_observation, double y, doub
 					case 0:  //Normal
 						value1 = -exp(-r*(j - no_period)*dt)*(max(put_k - R_final[j], 0.0));  //final_payoff幣別=HKD
 						break;
-						/*
-						case 1:  //Floating
-						//value1 = - exp(-rf*(j - n_past)*dt)*(max(put_k - R_final[j], 0.0))*FXt;  //final_payoff幣別=USD
-						value1 = -exp(-rf*(j - no_period)*dt)*(max(put_k - R_final[j], 0.0))*FXt;
+
+					case 3:  //Quanto
+							 //value1 = - exp(-rf*(j - n_past)*dt)*(max(put_k - R_final[j], 0.0))*FXT;  //final_payoff幣別=USD
+						value1 = -exp(-rf*(j - no_period)*dt)*(max(put_k - R_final[j], 0.0))*FXT;
 						break;
 
-						case 2:  //Compo
+						/*
+						case 2:  //Floating
+						//value1 = - exp(-rf*(j - n_past)*dt)*(max(put_k - R_final[j], 0.0))*FXt;  //final_payoff幣別=USD
+						value1 = -exp(-r*(j - no_period)*dt)*(max(put_k - R_final[j], 0.0))*FXt;
+						break;
+
+						case 3:  //Compo
 						//value1 = - exp(-rf*(j - n_past)*dt)*(max(FX0*put_k - FXt*R_final[j], 0.0));  //final_payoff幣別=USD
 						value1 = -exp(-rf*(j - no_period)*dt)*(max(FX0*put_k - FXt*R_final[j], 0.0));
 						break;
 
-						case 3:  //Quanto
-						//value1 = - exp(-rf*(j - n_past)*dt)*(max(put_k - R_final[j], 0.0))*FXT;  //final_payoff幣別=USD
-						value1 = -exp(-rf*(j - no_period)*dt)*(max(put_k - R_final[j], 0.0))*FXT;
-						break;
 						*/
 					}
 
@@ -388,20 +396,22 @@ double _stdcall myTurboNote_Price(long type, long no_observation, double y, doub
 					switch (type)
 					{
 					case 0:  //Normal
-						value1 = exp(-r*(j - no_period)*dt)*ParticipationRate*max(R_final[j] - 1, 0.0);  //final_payoff幣別=HKD
+						value1 = exp(-r*(j - no_period)*dt)*ParticipationRate*max(R_final[j] - 1.0, 0.0);  //final_payoff幣別=HKD
 						break;
+
+					case 1:  //Quanto
+						value1 = exp(-rf*(j - n_past)*dt)*ParticipationRate*max(R_final[j] - 1.0, 0.0) * FXT;  //final_payoff幣別=USD
+						break;
+
 						/*
-						case 1:  //Floating
-						value1= exp(-rf*(j - n_past)*dt)*ParticipationRate*(R_final[j] - spot[0])* FXt;  //final_payoff幣別=USD
+						case 2:  //Floating
+						value1= exp(-r*(j - n_past)*dt)*ParticipationRate*max(R_final[j] - 1.0, 0.0)* FXt;  //final_payoff幣別=USD
 						break;
 
-						case 2:  //Compo
-						value1 = exp(-rf*(j - n_past)*dt)*ParticipationRate*((FXt*R_final[j] - FX0*spot[0]));  //final_payoff幣別=USD
+						case 3:  //Compo
+						value1 = exp(-rf*(j - n_past)*dt)*ParticipationRate*max((FXt*R_final[j] - FX0*1.0), 0.0);  //final_payoff幣別=USD
 						break;
 
-						case 3:  //Quanto
-						value1 = exp(-rf*(j - n_past)*dt)*ParticipationRate*(R_final[j] - spot[0]) * FXT;  //final_payoff幣別=USD
-						break;
 						*/
 					}
 				}
@@ -510,22 +520,24 @@ double _stdcall myTurboNote_Price(long type, long no_observation, double y, doub
 						case 0:  //Normal
 							final_payoff[k - 1] = final_payoff[k - 1] - exp(-r*(currentPeriod - n_past)*dt)*(max(put_k - R_final[currentPeriod], 0.0));  //final_payoff幣別=HKD
 							break;
-							/*
-							case 1:  //Floating
-							final_payoff[k - 1] = final_payoff[k - 1] - exp(-rf*(currentPeriod - n_past)*dt)*(max(put_k - R_final[currentPeriod], 0.0))*FXt;  //final_payoff幣別=USD
+
+						case 1:  //Quanto
+							final_payoff[k - 1] = final_payoff[k - 1] - exp(-rf*(currentPeriod - n_past)*dt)*(max(put_k - R_final[currentPeriod], 0.0))*FXT;  //final_payoff幣別=USD
 							break;
 
-							case 2:  //Compo
+							/*
+							case 2:  //Floating
+							final_payoff[k - 1] = final_payoff[k - 1] - exp(-r*(currentPeriod - n_past)*dt)*(max(put_k - R_final[currentPeriod], 0.0))*FXt;  //final_payoff幣別=USD
+							break;
+
+							case 3:  //Compo
 							final_payoff[k - 1] = final_payoff[k - 1] - exp(-rf*(currentPeriod - n_past)*dt)*(max(FX0*put_k - FXt*R_final[currentPeriod], 0.0));  //final_payoff幣別=USD
 							break;
 
-							case 3:  //Quanto
-							final_payoff[k - 1] = final_payoff[k - 1] - exp(-rf*(currentPeriod - n_past)*dt)*(max(put_k - R_final[currentPeriod], 0.0))*FXT;  //final_payoff幣別=USD
-							break;
 							*/
 						}
 
-						discount_payoff = discount_payoff + final_payoff[k - 1];
+						discount_payoff += final_payoff[k - 1];
 						count[1] += 1;
 						//fprintf(fout, "%d : %.8lf\n", n_final, R_final[m11]);
 					}
@@ -534,24 +546,26 @@ double _stdcall myTurboNote_Price(long type, long no_observation, double y, doub
 						switch (type)
 						{
 						case 0:  //Normal
-							final_payoff[k - 1] = final_payoff[k - 1] + exp(-r*(currentPeriod - n_past)*dt)*ParticipationRate*max(R_final[currentPeriod] - 1, 0.0);  //final_payoff幣別=HKD
+							final_payoff[k - 1] += exp(-r*(currentPeriod - n_past)*dt)*ParticipationRate*max(R_final[currentPeriod] - 1.0, 0.0);  //final_payoff幣別=HKD
 							break;
+
+						case 1:  //Quanto
+							final_payoff[k - 1] += exp(-rf*(currentPeriod - n_past)*dt)*ParticipationRate*max(R_final[currentPeriod] - 1.0, 0.0) * FXT;  //final_payoff幣別=USD
+							break;
+
 							/*
-							case 1:  //Floating
-							final_payoff[k - 1] = final_payoff[k - 1] + exp(-rf*(currentPeriod - n_past)*dt)*ParticipationRate*(R_final[currentPeriod] - spot[0])* FXt;  //final_payoff幣別=USD
+							case 2:  //Floating
+							final_payoff[k - 1] +=  exp(-r*(currentPeriod - n_past)*dt)*ParticipationRate*(R_final[currentPeriod] - spot[0])* FXt;  //final_payoff幣別=USD
 							break;
 
-							case 2:  //Compo
-							final_payoff[k - 1] = final_payoff[k - 1] + exp(-rf*(currentPeriod - n_past)*dt)*ParticipationRate*((FXt*R_final[currentPeriod] - FX0*spot[0]));  //final_payoff幣別=USD
+							case 3:  //Compo
+							final_payoff[k - 1] +=  exp(-rf*(currentPeriod - n_past)*dt)*ParticipationRate*((FXt*R_final[currentPeriod] - FX0*spot[0]));  //final_payoff幣別=USD
 							break;
 
-							case 3:  //Quanto
-							final_payoff[k - 1] = final_payoff[k - 1] + exp(-rf*(currentPeriod - n_past)*dt)*ParticipationRate*(R_final[currentPeriod] - spot[0]) * FXT;  //final_payoff幣別=USD
-							break;
 							*/
 						}
 
-						discount_payoff = discount_payoff + final_payoff[k - 1];
+						discount_payoff += final_payoff[k - 1];
 						count[2] += 1;
 					}
 				}
@@ -574,18 +588,20 @@ double _stdcall myTurboNote_Price(long type, long no_observation, double y, doub
 	case 0:  //Normal
 		payoff_sum = (discount_payoff + coupon_sum * put_k);  //加總全部
 		break;
+
+	case 1:  //Quanto
+		payoff_sum = (discount_payoff + coupon_sum * put_k * FXT);
+		break;
+
 		/*
-		case 1:  //Floating
+		case 2:  //Floating
 		payoff_sum = (discount_payoff + coupon_sum * put_k * FXt);  //加總全部;幣別=USD
 		break;
 
-		case 2:  //Compo
+		case 3:  //Compo
 		payoff_sum = (discount_payoff + coupon_sum * put_k * FX0);  //加總全部;幣別=USD
 		break;
 
-		case 3:  //Quanto
-		payoff_sum = (discount_payoff + coupon_sum * put_k * FXT);
-		break;
 		*/
 	}
 
@@ -597,7 +613,8 @@ double _stdcall myTurboNote_Price(long type, long no_observation, double y, doub
 
 double _stdcall myTurboNote_Delta(long type, long no_observation, double y, double r, double ParticipationRate,
 	double put_k, double H, double bonuscouponRate,
-	double* spot, double* spot2, double* vol, double* stk, double t, double FX0, double valueDate, double* observeDate)
+	double* spot, double* spot2, double* vol, double* stk, double t, double FX0, double valueDate, double* observeDate,
+	double rf, double corrFX, double volFX)
 {
 	long no_asset = 1;
 	long ko_flag_greeks = 0;
@@ -623,11 +640,11 @@ double _stdcall myTurboNote_Delta(long type, long no_observation, double y, doub
 	spot_u[no] = spot_u[no] + ds;
 	spot_d[no] = spot_d[no] - ds;
 
-	ko_flag_greeks = isKnockOut(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol, stk, t, FX0, valueDate, observeDate);
+	ko_flag_greeks = isKnockOut(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol, stk, t, FX0, valueDate, observeDate, rf, corrFX, volFX);
 
 	if (ko_flag_greeks == 0) {
-		p1 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_u, vol, stk, t, FX0, valueDate, observeDate);
-		p2 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_d, vol, stk, t, FX0, valueDate, observeDate);
+		p1 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_u, vol, stk, t, FX0, valueDate, observeDate, rf, corrFX, volFX);
+		p2 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_d, vol, stk, t, FX0, valueDate, observeDate, rf, corrFX, volFX);
 
 		delta = (p1 - p2) / (2 * ds);
 	}
@@ -639,7 +656,8 @@ double _stdcall myTurboNote_Delta(long type, long no_observation, double y, doub
 
 double _stdcall myTurboNote_Gamma(long type, long no_observation, double y, double r, double ParticipationRate,
 	double put_k, double H, double bonuscouponRate,
-	double* spot, double* spot2, double* vol, double* stk, double t, double FX0, double valueDate, double* observeDate)
+	double* spot, double* spot2, double* vol, double* stk, double t, double FX0, double valueDate, double* observeDate,
+	double rf, double corrFX, double volFX)
 {
 	long no_asset = 1;
 	long ko_flag_greeks = 0;
@@ -665,11 +683,11 @@ double _stdcall myTurboNote_Gamma(long type, long no_observation, double y, doub
 	spot_u[no] = spot_u[no] + ds;
 	spot_d[no] = spot_d[no] - ds;
 
-	ko_flag_greeks = isKnockOut(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol, stk, t, FX0, valueDate, observeDate);
+	ko_flag_greeks = isKnockOut(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol, stk, t, FX0, valueDate, observeDate, rf, corrFX, volFX);
 
 	if (ko_flag_greeks == 0) {
-		p1 = myTurboNote_Delta(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_u, vol, stk, t, FX0, valueDate, observeDate);
-		p2 = myTurboNote_Delta(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_d, vol, stk, t, FX0, valueDate, observeDate);
+		p1 = myTurboNote_Delta(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_u, vol, stk, t, FX0, valueDate, observeDate, rf, corrFX, volFX);
+		p2 = myTurboNote_Delta(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot_d, vol, stk, t, FX0, valueDate, observeDate, rf, corrFX, volFX);
 
 		gamma = (p1 - p2) / (2 * ds);
 	}
@@ -680,7 +698,8 @@ double _stdcall myTurboNote_Gamma(long type, long no_observation, double y, doub
 }
 double _stdcall myTurboNote_Vega(long type, long no_observation, double y, double r, double ParticipationRate,
 	double put_k, double H, double bonuscouponRate,
-	double* spot, double* spot2, double* vol, double* stk, double t, double FX0, double valueDate, double* observeDate)
+	double* spot, double* spot2, double* vol, double* stk, double t, double FX0, double valueDate, double* observeDate,
+	double rf, double corrFX, double volFX)
 {
 	long no_asset = 1;
 	long ko_flag_greeks = 0;
@@ -705,11 +724,11 @@ double _stdcall myTurboNote_Vega(long type, long no_observation, double y, doubl
 	vol_u[no] = vol_u[no] + dv;
 	vol_d[no] = vol_d[no] - dv;
 
-	ko_flag_greeks = isKnockOut(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol, stk, t, FX0, valueDate, observeDate);
+	ko_flag_greeks = isKnockOut(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol, stk, t, FX0, valueDate, observeDate, rf, corrFX, volFX);
 
 	if (ko_flag_greeks == 0) {
-		p1 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol_u, stk, t, FX0, valueDate, observeDate);
-		p2 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol_d, stk, t, FX0, valueDate, observeDate);
+		p1 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol_u, stk, t, FX0, valueDate, observeDate, rf, corrFX, volFX);
+		p2 = myTurboNote_Price(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol_d, stk, t, FX0, valueDate, observeDate, rf, corrFX, volFX);
 
 		vega = (p1 - p2) / (2 * dv);
 	}
@@ -720,9 +739,10 @@ double _stdcall myTurboNote_Vega(long type, long no_observation, double y, doubl
 }
 long _stdcall myTurboNote_isKnockOut(long type, long no_observation, double y, double r, double ParticipationRate,
 	double put_k, double H, double bonuscouponRate,
-	double* spot, double* spot2, double* vol, double* stk, double t, double FX0, double valueDate, double* observeDate)
+	double* spot, double* spot2, double* vol, double* stk, double t, double FX0, double valueDate, double* observeDate,
+	double rf, double corrFX, double volFX)
 {
-	long ans = isKnockOut(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol, stk, t, FX0, valueDate, observeDate);
+	long ans = isKnockOut(type, no_observation, y, r, ParticipationRate, put_k, H, bonuscouponRate, spot, spot2, vol, stk, t, FX0, valueDate, observeDate, rf, corrFX, volFX);
 
 	return ans;
 }
